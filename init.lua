@@ -222,7 +222,14 @@ replacer.replace = function( itemstack, user, pointed_thing, mode )
 
        --minetest.env:place_node( pos, { name =  item[ "metadata" ] } );
        minetest.env:add_node( pos, { name =  daten[1], param1 = daten[2], param2 = daten[3] } );
-       return nil; -- no item shall be removed from inventory
+       local item_wear = tonumber(itemstack:get_wear())
+        item_wear = item_wear + 819
+        if item_wear > 65535 then
+                itemstack:clear()
+                return itemstack
+        end
+        itemstack:set_wear(item_wear)
+       return itemstack
     end
 
 
