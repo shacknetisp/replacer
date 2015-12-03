@@ -41,6 +41,11 @@ replacer = {};
 -- adds a tool for inspecting nodes and entities
 dofile(minetest.get_modpath("replacer").."/inspect.lua");
 
+local blacklist = {
+    "protector:protect",
+    "protector:protect2"
+}
+
 minetest.register_tool( "replacer:replacer",
 {
     description = "Node replacement tool",
@@ -87,6 +92,10 @@ minetest.register_tool( "replacer:replacer",
 
        local pos  = minetest.get_pointed_thing_position( pointed_thing, under );
        local node = minetest.env:get_node_or_nil( pos );
+       
+       if blacklist[node.name] then
+           minetest.chat_send_player(name, "You cannot use '"..item[ "metadata" ].."' in a replacer.")
+       end
        
        --minetest.chat_send_player( name, "  Target node: "..minetest.serialize( node ).." at pos "..minetest.serialize( pos ).."."); 
 
