@@ -41,14 +41,26 @@ replacer = {};
 -- adds a tool for inspecting nodes and entities
 dofile(minetest.get_modpath("replacer").."/inspect.lua");
 
-local blacklist = {
+function Set (list)
+  local set = {}
+  for _, l in ipairs(list) do set[l] = true end
+  return set
+end
+
+local blacklist = Set {
     "protector:protect",
-    "protector:protect2"
+    "protector:protect2",
+    "protector:pvpprotect",
 }
+
+local replacer_charge = 50000
+local replacer_charge_per_node = 500
+
+technic.register_power_tool("replacer:replacer", replacer_charge)
 
 minetest.register_tool( "replacer:replacer",
 {
-    description = "Node replacement tool",
+    description = "Node Replacement Tool",
     groups = {}, 
     inventory_image = "replacer_replacer.png",
     wield_image = "",
@@ -67,7 +79,10 @@ minetest.register_tool( "replacer:replacer",
         }
     },
     node_placement_prediction = nil,
-    metadata = "default:dirt", -- default replacement: common dirt
+    metadata = minetest.serialize({item = "default:dirt"}), -- default replacement: common dirt
+    
+    wear_represents = "technic_RE_charge",
+    on_refill = technic.refill_RE_charge,
 
     on_place = function(itemstack, placer, pointed_thing)
 
@@ -94,161 +109,176 @@ minetest.register_tool( "replacer:replacer",
        local node = minetest.env:get_node_or_nil( pos );
        
        if blacklist[node.name] then
-           minetest.chat_send_player(name, "You cannot use '"..item[ "metadata" ].."' in a replacer.")
+           minetest.chat_send_player(name, "You cannot use '"..node.name.."' in a replacer.")
+           return nil;
        end
        
        --minetest.chat_send_player( name, "  Target node: "..minetest.serialize( node ).." at pos "..minetest.serialize( pos ).."."); 
 
-       local item = itemstack:to_table();
+       local meta = minetest.deserialize(itemstack:get_metadata())
+       if not meta or not meta.charge then
+                return
+        end
        -- make sure metadata is always set
        if( node ~= nil and node.name ) then
-          item[ "metadata" ] = node.name..' '..node.param1..' '..node.param2;
+          meta.item = node.name..' '..node.param1..' '..node.param2;
        else
-          item[ "metadata" ] = "default:dirt 0 0";
+          meta.item = "default:dirt 0 0";
        end
-       itemstack:replace( item );
+       
+       itemstack:set_metadata(minetest.serialize(meta))
 
-       minetest.chat_send_player( name, "Node replacement tool set to: '"..item[ "metadata" ].."'."); 
+       minetest.chat_send_player( name, "Node replacement tool set to: '"..meta.item.."'."); 
 
-       return itemstack; -- nothing consumed but data changed
+       return itemstack -- nothing consumed but data changed
     end,
      
 
 --    on_drop = func(itemstack, dropper, pos),
 
     on_use = function(itemstack, user, pointed_thing)
-
        return replacer.replace( itemstack, user, pointed_thing, above );
     end,
 })
 
 
 replacer.replace = function( itemstack, user, pointed_thing, mode )
-
-       if( user == nil or pointed_thing == nil) then
-          return nil;
-       end
-       local name = user:get_player_name();
-       --minetest.chat_send_player( name, "You USED this on "..minetest.serialize( pointed_thing )..".");
- 
-       if( pointed_thing.type ~= "node" ) then
-          minetest.chat_send_player( name, "  Error: No node.");
-          return nil;
-       end
-
-       local pos  = minetest.get_pointed_thing_position( pointed_thing, mode );
-       local node = minetest.env:get_node_or_nil( pos );
-       
-       --minetest.chat_send_player( name, "  Target node: "..minetest.serialize( node ).." at pos "..minetest.serialize( pos ).."."); 
-
-       if( node == nil ) then
-
-          minetest.chat_send_player( name, "Error: Target node not yet loaded. Please wait a moment for the server to catch up.");
-          return nil;
-       end
-
-
-       local item = itemstack:to_table();
-
-       -- make sure it is defined
-       if( not( item[ "metadata"] ) or item["metadata"]=="" ) then
-          item["metadata"] = "default:dirt 0 0";
-       end
-
-       -- regain information about nodename, param1 and param2
-       local daten = item[ "metadata"]:split( " " );
-       -- the old format stored only the node name
-       if( #daten < 3 ) then
-          daten[2] = 0;
-          daten[3] = 0;
-       end
-
-       -- if someone else owns that node then we can not change it
-       if( replacer_homedecor_node_is_owned(pos, user)) then
-
-          return nil;
-       end
-
-       -- do not replace if there is nothing to be done
-       if( node.name == daten[1] ) then
-
-          -- the node itshelf remains the same, but the orientation was changed
-          if( node.param1 ~= daten[2] or node.param2 ~= daten[3] ) then
-             minetest.env:add_node( pos, { name = node.name, param1 = daten[2], param2 = daten[3] } );
-          end
-
-          return nil;
-       end
-
-
-       -- in survival mode, the player has to provide the node he wants to be placed
-       if( not(minetest.setting_getbool("creative_mode") )) then
- 
-          -- players usually don't carry dirt_with_grass around; it's safe to assume normal dirt here
-          -- fortionately, dirt and dirt_with_grass does not make use of rotation
-          if( daten[1] == "default:dirt_with_grass" ) then
-             daten[1] = "default:dirt";
-             item["metadata"] = "default:dirt 0 0";
-          end
-
-          -- does the player carry at least one of the desired nodes with him?
-          if( not( user:get_inventory():contains_item("main", daten[1]))) then
- 
-
-             minetest.chat_send_player( name, "You have no further '"..( daten[1] or "?" ).."'. Replacement failed.");
-             return nil;
-          end
-
-
-
-          -- give the player the item by simulating digging if possible
-          if(   node.name ~= "air" 
-            and node.name ~= "ignore"
-            and node.name ~= "default:lava_source" 
-            and node.name ~= "default:lava_flowing"
-            and node.name ~= "default:water_source"
-            and node.name ~= "default:water_flowing" ) then
-
-             minetest.node_dig( pos, node, user );
-
-             local digged_node = minetest.env:get_node_or_nil( pos );
-             if( not( digged_node ) 
-                or digged_node.name == node.name ) then
-
-                minetest.chat_send_player( name, "Replacing '"..( node.name or "air" ).."' with '"..( item[ "metadata"] or "?" ).."' failed. Unable to remove old node.");
-                return nil;
-             end
-            
-          end
-
-          -- consume the item
-          user:get_inventory():remove_item("main", daten[1].." 1");
-
-          --user:get_inventory():add_item( "main", node.name.." 1");
-       end
-
-       --minetest.chat_send_player( name, "Replacing node '"..( node.name or "air" ).."' with '"..( item[ "metadata"] or "?" ).."'.");
-
-       --minetest.env:place_node( pos, { name =  item[ "metadata" ] } );
-       minetest.env:add_node( pos, { name =  daten[1], param1 = daten[2], param2 = daten[3] } );
-       local item_wear = tonumber(itemstack:get_wear())
-        item_wear = item_wear + 819
-        if item_wear > 65535 then
-                itemstack:clear()
-                return itemstack
-        end
-        itemstack:set_wear(item_wear)
-       return itemstack
+    local meta = minetest.deserialize(itemstack:get_metadata())
+    if not meta or not meta.charge then
+            return
     end
 
+    if( user == nil or pointed_thing == nil) then
+        return nil;
+    end
+    local name = user:get_player_name();
+    --minetest.chat_send_player( name, "You USED this on "..minetest.serialize( pointed_thing )..".");
+
+    if( pointed_thing.type ~= "node" ) then
+        minetest.chat_send_player( name, "  Error: No node.");
+        return nil;
+    end
+
+    local pos  = minetest.get_pointed_thing_position( pointed_thing, mode );
+    local node = minetest.env:get_node_or_nil( pos );
+    
+    --minetest.chat_send_player( name, "  Target node: "..minetest.serialize( node ).." at pos "..minetest.serialize( pos ).."."); 
+
+    if( node == nil ) then
+
+        minetest.chat_send_player( name, "Error: Target node not yet loaded. Please wait a moment for the server to catch up.");
+        return nil;
+    end
+
+
+    local item = itemstack:to_table();
+
+    -- make sure it is defined
+    if( not( meta.item ) or meta.item=="" ) then
+        meta.item = "default:dirt 0 0";
+    end
+
+    -- regain information about nodename, param1 and param2
+    local daten = meta.item:split( " " );
+    -- the old format stored only the node name
+    if( #daten < 3 ) then
+        daten[2] = 0;
+        daten[3] = 0;
+    end
+
+    -- if someone else owns that node then we can not change it
+    if( replacer_homedecor_node_is_owned(pos, user)) then
+
+        return nil;
+    end
+    
+    if blacklist[daten[1]] then
+        minetest.chat_send_player(name, "You cannot use '"..node.name.."' in a replacer.")
+        return nil;
+    end
+
+    -- do not replace if there is nothing to be done
+    if( node.name == daten[1] ) then
+
+        -- the node itshelf remains the same, but the orientation was changed
+        if( node.param1 ~= daten[2] or node.param2 ~= daten[3] ) then
+            minetest.env:add_node( pos, { name = node.name, param1 = daten[2], param2 = daten[3] } );
+        end
+
+        return nil;
+    end
+
+    -- in survival mode, the player has to provide the node he wants to be placed
+    if( not(minetest.setting_getbool("creative_mode") )) then
+
+        -- players usually don't carry dirt_with_grass around; it's safe to assume normal dirt here
+        -- fortionately, dirt and dirt_with_grass does not make use of rotation
+        if( daten[1] == "default:dirt_with_grass" ) then
+            daten[1] = "default:dirt";
+            meta.item = "default:dirt 0 0";
+        end
+
+        -- does the player carry at least one of the desired nodes with him?
+        if( not( user:get_inventory():contains_item("main", daten[1]))) then
+
+
+            minetest.chat_send_player( name, "You have no further '"..( daten[1] or "?" ).."'. Replacement failed.");
+            return nil;
+        end
+        
+        if meta.charge >= replacer_charge_per_node then
+                if not technic.creative_mode then
+                        meta.charge = meta.charge - replacer_charge_per_node
+                        itemstack:set_metadata(minetest.serialize(meta))
+                        technic.set_RE_wear(itemstack, meta.charge, replacer_charge)
+                end
+        else
+            if not technic.creative_mode then
+                return itemstack
+            end
+        end
+
+
+        -- give the player the item by simulating digging if possible
+        if(   node.name ~= "air" 
+        and node.name ~= "ignore"
+        and node.name ~= "default:lava_source" 
+        and node.name ~= "default:lava_flowing"
+        and node.name ~= "default:water_source"
+        and node.name ~= "default:water_flowing" ) then
+
+            minetest.node_dig( pos, node, user );
+
+            local digged_node = minetest.env:get_node_or_nil( pos );
+            if( not( digged_node ) 
+            or digged_node.name == node.name ) then
+
+            minetest.chat_send_player( name, "Replacing '"..( node.name or "air" ).."' with '"..( meta.item or "?" ).."' failed. Unable to remove old node.");
+            return nil;
+            end
+        
+        end
+
+        -- consume the item
+        user:get_inventory():remove_item("main", daten[1].." 1");
+
+        --user:get_inventory():add_item( "main", node.name.." 1");
+    end
+
+    --minetest.chat_send_player( name, "Replacing node '"..( node.name or "air" ).."' with '"..( item[ "metadata"] or "?" ).."'.");
+
+    --minetest.env:place_node( pos, { name =  item[ "metadata" ] } );
+    minetest.env:add_node( pos, { name =  daten[1], param1 = daten[2], param2 = daten[3] } );
+    return itemstack
+end
 
 minetest.register_craft({
         output = 'replacer:replacer',
         recipe = {
-                { 'default:chest', '',              '' },
-                { '',              'default:stick', '' },
-                { '',              '',              'default:chest' },
-        }
+		{'moreores:tin_ingot',            'technic:diamond_drill_head', 'moreores:tin_ingot'},
+		{'technic:stainless_steel_ingot', 'technic:motor',              'technic:stainless_steel_ingot'},
+		{'default:chest',                              'technic:red_energy_crystal', 'default:copper_ingot'},
+	}
 })
 
 
