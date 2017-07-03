@@ -1,5 +1,5 @@
 
-          
+
 --[[
     Replacement tool for creative building (Mod for MineTest)
     Copyright (C) 2013 Sokomine
@@ -20,7 +20,7 @@
 
 -- Version 3.0
 
--- Changelog: 
+-- Changelog:
 -- 02.10.2014 * Some more improvements for inspect-tool. Added craft-guide.
 -- 01.10.2014 * Added inspect-tool.
 -- 12.01.2013 * If digging the node was unsuccessful, then the replacement will now fail
@@ -29,10 +29,10 @@
 --              in order to check if the replacement is allowed
 -- 24.04.2013 * param1 and param2 are now stored
 --            * hold sneak + right click to store new pattern
---            * right click: place one of the itmes 
+--            * right click: place one of the itmes
 --            * receipe changed
 --            * inventory image added
-    
+
 -- adds a function to check ownership of a node; taken from VanessaEs homedecor mod
 dofile(minetest.get_modpath("replacer").."/check_owner.lua");
 
@@ -50,18 +50,21 @@ end
 local blacklist = Set {
     "protector:protect",
     "protector:protect2",
+    "protector:protect3",
+    "protector:teamprotect",
     "protector:pvpprotect",
+    "air",
 }
 
 local replacer_charge = 50000
-local replacer_charge_per_node = 500
+local replacer_charge_per_node = 200
 
 technic.register_power_tool("replacer:replacer", replacer_charge)
 
 minetest.register_tool( "replacer:replacer",
 {
     description = "Node Replacement Tool",
-    groups = {}, 
+    groups = {},
     inventory_image = "replacer_replacer.png",
     wield_image = "",
     wield_scale = {x=1,y=1,z=1},
@@ -80,7 +83,7 @@ minetest.register_tool( "replacer:replacer",
     },
     node_placement_prediction = nil,
     metadata = minetest.serialize({item = "default:dirt"}), -- default replacement: common dirt
-    
+
     wear_represents = "technic_RE_charge",
     on_refill = technic.refill_RE_charge,
 
@@ -93,13 +96,13 @@ minetest.register_tool( "replacer:replacer",
        --minetest.chat_send_player( name, "You PLACED this on "..minetest.serialize( pointed_thing )..".");
 
        local keys=placer:get_player_control();
-    
+
        -- just place the stored node if now new one is to be selected
        if( not( keys["sneak"] )) then
 
           return replacer.replace( itemstack, placer, pointed_thing, 0  ); end
 
- 
+
        if( pointed_thing.type ~= "node" ) then
           minetest.chat_send_player( name, "  Error: No node selected.");
           return nil;
@@ -107,13 +110,13 @@ minetest.register_tool( "replacer:replacer",
 
        local pos  = minetest.get_pointed_thing_position( pointed_thing, under );
        local node = minetest.env:get_node_or_nil( pos );
-       
+
        if blacklist[node.name] then
            minetest.chat_send_player(name, "You cannot use '"..node.name.."' in a replacer.")
            return nil;
        end
-       
-       --minetest.chat_send_player( name, "  Target node: "..minetest.serialize( node ).." at pos "..minetest.serialize( pos ).."."); 
+
+       --minetest.chat_send_player( name, "  Target node: "..minetest.serialize( node ).." at pos "..minetest.serialize( pos )..".");
 
        local meta = minetest.deserialize(itemstack:get_metadata())
        if not meta or not meta.charge then
@@ -125,14 +128,15 @@ minetest.register_tool( "replacer:replacer",
        else
           meta.item = "default:dirt 0 0";
        end
-       
-       itemstack:set_metadata(minetest.serialize(meta))
 
-       minetest.chat_send_player( name, "Node replacement tool set to: '"..meta.item.."'."); 
+       itemstack:set_metadata(minetest.serialize(meta))
+       itemstack:get_meta():set_string("description", "Node Replacement Tool ("..meta.item..")")
+
+       minetest.chat_send_player( name, "Node replacement tool set to: '"..meta.item.."'.");
 
        return itemstack -- nothing consumed but data changed
     end,
-     
+
 
 --    on_drop = func(itemstack, dropper, pos),
 
@@ -161,8 +165,8 @@ replacer.replace = function( itemstack, user, pointed_thing, mode )
 
     local pos  = minetest.get_pointed_thing_position( pointed_thing, mode );
     local node = minetest.env:get_node_or_nil( pos );
-    
-    --minetest.chat_send_player( name, "  Target node: "..minetest.serialize( node ).." at pos "..minetest.serialize( pos ).."."); 
+
+    --minetest.chat_send_player( name, "  Target node: "..minetest.serialize( node ).." at pos "..minetest.serialize( pos )..".");
 
     if( node == nil ) then
 
@@ -191,7 +195,7 @@ replacer.replace = function( itemstack, user, pointed_thing, mode )
 
         return nil;
     end
-    
+
     if blacklist[daten[1]] then
         minetest.chat_send_player(name, "You cannot use '"..node.name.."' in a replacer.")
         return nil;
@@ -225,7 +229,7 @@ replacer.replace = function( itemstack, user, pointed_thing, mode )
             minetest.chat_send_player( name, "You have no further '"..( daten[1] or "?" ).."'. Replacement failed.");
             return nil;
         end
-        
+
         if meta.charge >= replacer_charge_per_node then
                 if not technic.creative_mode then
                         meta.charge = meta.charge - replacer_charge_per_node
@@ -240,9 +244,9 @@ replacer.replace = function( itemstack, user, pointed_thing, mode )
 
 
         -- give the player the item by simulating digging if possible
-        if(   node.name ~= "air" 
+        if(   node.name ~= "air"
         and node.name ~= "ignore"
-        and node.name ~= "default:lava_source" 
+        and node.name ~= "default:lava_source"
         and node.name ~= "default:lava_flowing"
         and node.name ~= "default:water_source"
         and node.name ~= "default:water_flowing" ) then
@@ -250,13 +254,13 @@ replacer.replace = function( itemstack, user, pointed_thing, mode )
             minetest.node_dig( pos, node, user );
 
             local digged_node = minetest.env:get_node_or_nil( pos );
-            if( not( digged_node ) 
+            if( not( digged_node )
             or digged_node.name == node.name ) then
 
             minetest.chat_send_player( name, "Replacing '"..( node.name or "air" ).."' with '"..( meta.item or "?" ).."' failed. Unable to remove old node.");
             return nil;
             end
-        
+
         end
 
         -- consume the item

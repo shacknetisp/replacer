@@ -17,6 +17,16 @@ if(    minetest.get_modpath("trees")
 	replacer.image_replacements[ "default:furnace_active" ] = "oven:oven_active";
 end
 
+function getblock(pos)
+    local function toblock(coord)
+        return math.floor(coord / 16)
+    end
+    if not pos then
+        return "(?)"
+    end
+    return minetest.pos_to_string({x=toblock(pos.x), y=toblock(pos.y), z=toblock(pos.z)})
+end
+
 minetest.register_tool( "replacer:inspect",
 {
     description = "Node inspection tool",
@@ -119,6 +129,9 @@ replacer.inspect = function( itemstack, user, pointed_thing, mode, show_receipe 
 		protected_info = 'INFO: You can dig this node, but others can\'t.';
 	end
 	text = text..' '..protected_info;
+        if pos then
+            text = text..' Block: '..getblock(pos)
+        end
 -- no longer spam the chat; the craft guide is more informative
 --	minetest.chat_send_player( name, text );
 	
@@ -139,7 +152,7 @@ replacer.group_placeholder = {};
 replacer.group_placeholder[ 'group:wood'  ] = 'default:wood';
 replacer.group_placeholder[ 'group:tree'  ] = 'default:tree';
 replacer.group_placeholder[ 'group:sapling']= 'default:sapling';
-replacer.group_placeholder[ 'group:stick' ] = 'default:stick';
+replacer.group_placeholder[ 'group:stick' ] = 'group:stick';
 replacer.group_placeholder[ 'group:stone' ] = 'default:cobble'; -- 'default:stone';  point people to the cheaper cobble
 replacer.group_placeholder[ 'group:sand'  ] = 'default:sand';
 replacer.group_placeholder[ 'group:leaves'] = 'default:leaves';
@@ -285,7 +298,7 @@ replacer.inspect_show_crafting = function( name, node_name, fields )
 		desc = ' - no description provided - ';
 	end
 		
-	local formspec = "size[6,6]"..
+	local formspec = "size[8,6]"..
 		"label[0,5.5;This is a "..minetest.formspec_escape( desc )..".]"..
 		"button_exit[5.0,4.3;1,0.5;quit;Exit]"..
 		"label[0,0;Name:]"..
@@ -306,8 +319,12 @@ replacer.inspect_show_crafting = function( name, node_name, fields )
 		end
 		formspec = formspec..".]";	
 	end
-
-	-- show information about protection
+        
+        formspec = formspec.."label[0.0,4;Block coordinates "..
+        getblock(fields.pos)
+        formspec = formspec..".]";
+        
+        -- show information about protection
 	if( fields.protected_info and fields.protected_info ~= "" ) then
 		formspec = formspec.."label[0.0,4.5;"..minetest.formspec_escape( fields.protected_info ).."]";
 	end
@@ -365,19 +382,19 @@ replacer.inspect_show_crafting = function( name, node_name, fields )
 			end
 		elseif( receipe.type=='cooking' and receipe.items and #receipe.items==1
 		    and receipe.output=="" ) then
-			formspec = formspec.."item_image_button[1,1;3.4,3.4;"..replacer.image_button_link( 'default:furnace_active' ).."]".. --default_furnace_front.png]"..
+			formspec = formspec.."item_image_button[1,1;2.4,2.4;"..replacer.image_button_link( 'default:furnace_active' ).."]".. --default_furnace_front.png]"..
 					"item_image_button[2.9,2.7;1.0,1.0;"..replacer.image_button_link( receipe.items[1] ).."]"..
 					"label[1.0,0;"..tostring(receipe.items[1]).."]"..
 					"label[0,0.5;This can be used as a fuel.]";
 		elseif( receipe.type=='cooking' and receipe.items and #receipe.items==1 ) then
-			formspec = formspec.."item_image_button[1,1;3.4,3.4;"..replacer.image_button_link( 'default:furnace' ).."]".. --default_furnace_front.png]"..
+			formspec = formspec.."item_image_button[1,1;2.4,2.4;"..replacer.image_button_link( 'default:furnace' ).."]".. --default_furnace_front.png]"..
 					"item_image_button[2.9,2.7;1.0,1.0;"..replacer.image_button_link( receipe.items[1] ).."]";
 		elseif( receipe.type=='colormachine' and receipe.items and #receipe.items==1 ) then
-			formspec = formspec.."item_image_button[1,1;3.4,3.4;"..replacer.image_button_link( 'colormachine:colormachine' ).."]".. --colormachine_front.png]"..
+			formspec = formspec.."item_image_button[1,1;2.4,2.4;"..replacer.image_button_link( 'colormachine:colormachine' ).."]".. --colormachine_front.png]"..
 					"item_image_button[2,2;1.0,1.0;"..replacer.image_button_link( receipe.items[1] ).."]";
 		elseif( receipe.type=='saw'          and receipe.items and #receipe.items==1 ) then
 			--formspec = formspec.."item_image[1,1;3.4,3.4;moreblocks:circular_saw]"..
-			formspec = formspec.."item_image_button[1,1;3.4,3.4;"..replacer.image_button_link( 'moreblocks:circular_saw' ).."]"..
+			formspec = formspec.."item_image_button[1,1;2.4,2.4;"..replacer.image_button_link( 'moreblocks:circular_saw' ).."]"..
 					"item_image_button[2,0.6;1.0,1.0;"..replacer.image_button_link( receipe.items[1] ).."]";
 		else
 			formspec = formspec..'label[3,1;Error: Unkown receipe.]';
@@ -407,6 +424,6 @@ minetest.register_craft({
         output = 'replacer:inspect',
         recipe = {
                 { 'default:torch' },
-                { 'default:stick' },
+                { 'group:stick' },
         }
 })
